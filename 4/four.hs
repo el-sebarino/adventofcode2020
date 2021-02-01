@@ -1,11 +1,14 @@
 import System.IO
-import Text.ParserCombinators.Parsec
 import qualified Data.Map as M
+import Text.ParserCombinators.Parsec
 
 -- Discovered regex! for pt 2
 --  ( this module need to be installed as text-pcre )
 import Text.Regex.PCRE
 
+--
+-- pt 1
+--
 -- parser to split the test file by empty lines
 eol = do
         char '\n'
@@ -30,7 +33,17 @@ sep_entry  = map (fst . break (== ':') ) . words
 has_elems es l = let oks = map (\x -> (x `elem` l ) || (x == "cid")) es
         in all (== True) oks
 
--- update: for pt 2, discovered regexp module
+--
+-- pt 2
+--
+-- Turn a field into a Data.Map
+-- getMap "aaa:bbb" = fromList [("aaa","bbb")]
+getMap :: String -> M.Map k a
+getMap s = let k = s =~ "(\\s+):"
+               v = s =~ ":(\\s+)"
+               in M.fromList [(k,v)]
+
+--- functions that return True if the field is valid
 -- byr (Birth Year) - four digits; at least 1920 and at most 2002.
 -- iyr (Issue Year) - four digits; at least 2010 and at most 2020.
 -- eyr (Expiration Year) - four digits; at least 2020 and at most 2030.
@@ -43,7 +56,7 @@ has_elems es l = let oks = map (\x -> (x `elem` l ) || (x == "cid")) es
 -- cid (Country ID) - ignored, missing or not.
 --
 
-yr :: String -> Maybe Int
+--- byr field
 yr s | s =~ "^\\d{4}$" = let n = read s :: Int
                             in Just n
      | otherwise = Nothing
@@ -53,11 +66,13 @@ checkyr min max s = case yr s of Just n -> n >= min && n <= max
 
 byr = checkyr 1920 2002
 
+--- iyr field
 iyr = checkyr 2010 2020
 
+--- eyr fields
 eyr = checkyr 2020 2030
 
-ht :: String -> Int
+-- hgt field
 ht s = let h = s =~ "\\d+" :: String
         in read h
 
@@ -66,17 +81,29 @@ checknum s min max = let n = s =~ "\\d+" :: String
                          x = read n :: Int
                          in n >= min && n <= max
 
--- TODO
-hgt s = let okheight = s =~ "^\\d+(cm|in)$"
-            in if okheight then if s =~ "cm" then checknum 150 193 s else if s =~ "in" then checknum 59 76 s else False
+hgt s | s =~ "cm" = checknum 150 193 s  && okheight
+      | s =~ "in" = checknum 59 76 s && okheight
+      | otherwise = false
+      where okheight = s =~ "^\\d+(cm|in)"
 
-
+-- hcl field
 hcl s = s =~ "^#[0-9a-f]{6}$"
 
+-- ecl field
 ecl s = s =~ "^(amb|blu|brn|gry|grn|hzl|oth)$"
 
+-- pid field
 pid s = s =~ "^\\d{9}$"
 
+-- Processing
+checkField :: (String, String -> Bool) -> Bool
+checkField (s, f) = f s
+
+fieldOk m (k,kf) = let v = m ! k
+        in checkField (k,kf) v
+
+allFieldsOk [] = True
+allFieldsOk m (x:xs) = fieldOk m x && allFieldsOk m xs
 
 -- main
 main :: IO ()
@@ -87,4 +114,9 @@ main = do
         let finally_processed_ppts = map sep_entry parsed_ppts
         let elems = ["byr", "iyr", "eyr", "hgt", "hcl", "ecl", "pid"]
         let oks =  map (has_elems elems) finally_processed_ppts
+        print $ length $ filter (== True) oks
+        -- pt 2
+        let maps = M.union $ map getMaps finally_processed_ppts
+        let funcs = [("byr", byr), ("iyr", iyr), ("eyr",eyr), ("hgt",hgt), ("hcl",hcl), ("ecl",ecl), ("pid",pid)]
+        let oks2 = map (\x -> allFieldsOk x funcs) maps
         print $ length $ filter (== True) oks
